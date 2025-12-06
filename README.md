@@ -1,88 +1,198 @@
-# ☕ Ritual Roast - Enterprise 3-Tier Web Architecture on AWS
+# ☕ Ritual Roast – Enterprise 3-Tier Web Architecture on AWS
 
-**A highly available, fault-tolerant, and secure recipe submission platform deployed on AWS.**
+A highly available, fault-tolerant, and secure recipe submission platform deployed on **Amazon Web Services** using a **3-tier multi-AZ architecture**.
 
-## 📖 Project Overview
-This project implements a classic **3-Tier Architecture** (Web, App, Data) using AWS Cloud services. It is designed to handle variable traffic loads, self-heal during component failures, and secure sensitive data using industry-standard encryption and network isolation.
-
-**Live Demo:** [https://www.rajdevops.click](https://www.rajdevops.click)
+This implementation is inspired by the **AWS Cloud Architect Capstone Project**, extended beyond the original lab to include **CloudFront CDN** and a **custom domain**.
 
 ---
 
-## 🏗️ High-Level Design (HLD)
-The architecture follows the **AWS Well-Architected Framework**, utilizing a Multi-AZ strategy for disaster recovery.
+## 🌐 Live Demo
 
-### **Architecture Flow:**
-1.  **Users** access the application via a Custom Domain (\`rajdevops.click\`) resolved by **Route 53**.
-2.  Traffic is routed to **Amazon CloudFront** (CDN) for caching and SSL termination (HTTPS).
-3.  CloudFront forwards dynamic requests to an **Application Load Balancer (ALB)** in the Public Subnet.
-4.  The ALB distributes traffic to **EC2 Instances** hosted in **Private Subnets** across two Availability Zones (\`ap-northeast-1a\`, \`ap-northeast-1c\`).
-5.  The application logic (Flask) connects to an **Amazon RDS (MySQL)** database, which runs in a **Multi-AZ** configuration for high availability.
-6.  **Secrets Manager** rotates and supplies database credentials securely at runtime.
+👉 [https://www.rajdevops.click](https://www.rajdevops.click)
 
 ---
 
-## 🔧 Low-Level Design (LLD) & Configuration
+## 📖 Overview
 
-### **1. Network Layer (VPC)**
-* **Region:** \`ap-northeast-1\` (Tokyo)
-* **CIDR:** \`10.16.0.0/16\`
-* **Subnets:** 6 Total (2 Public, 2 Private App, 2 Private Data).
-* **Gateways:**
-    * **Internet Gateway:** For ALB and NAT Gateway traffic.
-    * **NAT Gateway:** Allows Private Subnet instances to download updates/code without exposing them to inbound internet traffic.
+This project implements a production-style architecture using:
 
-### **2. Compute Layer (EC2 & Auto Scaling)**
-* **OS:** Amazon Linux 2023
-* **Instance Type:** \`t3.medium\` (Optimized for boot performance)
-* **Auto Scaling Group:**
-    * **Min:** 2 | **Max:** 4
-    * **Scaling Policy:** Target Tracking.
-    * **Health Checks:** ELB Health Check enabled (replaces failed app instances automatically).
+- **Private Compute Network** (App Tier protected from internet)
+- **Managed Database** (RDS MySQL, Multi-AZ for disaster recovery)
+- **Application Load Balancer** for intelligent HTTP routing
+- **CloudFront CDN** for global caching and SSL termination
+- **Route 53** for custom domain resolution
+- **Secrets Manager** for secure credential storage (Zero Hardcoded Secrets)
 
-### **3. Security & Identity**
-* **IAM Roles:** EC2 instances use an Instance Profile with least-privilege access to S3 (Code Artifacts) and Secrets Manager.
-* **Security Groups (Chained):**
-    * \`ALB-SG\`: Allows HTTPS (443) from Anywhere (\`0.0.0.0/0\`).
-    * \`App-SG\`: Allows Port 5000 **ONLY** from \`ALB-SG\`.
-    * \`DB-SG\`: Allows Port 3306 **ONLY** from \`App-SG\`.
-
-### **4. Storage & Database**
-* **S3:** Stores versioned application artifacts in \`virtual-roast-source-apne1\`.
-* **RDS:** MySQL 8.0 Multi-AZ deployment.
-* **Secrets Manager:** Stores DB credentials (\`/virtualroast/db/admin\`); Automatic rotation enabled.
+It follows key AWS **Well-Architected Pillars**:
+- Operational Excellence
+- Reliability
+- Security
+- Performance
+- Cost Optimization
 
 ---
 
-## 🛠️ Deployment Steps
+## 🏗 High-Level Architecture
 
-### **Prerequisites**
-* AWS Account with Admin Access
-* Registered Domain Name (Route 53)
-* SSL Certificate in \`us-east-1\` (ACM)
+**User Request Flow:**
 
-### **Step 1: Network Setup**
-Provision VPC, Subnets, and Route Tables. Ensure Private Subnets route \`0.0.0.0/0\` to the NAT Gateway.
+\`\`\`mermaid
+Browser
+  ↓ HTTPS (Global)
+CloudFront CDN
+  ↓ HTTP (Regional)
+Application Load Balancer
+  ↓ HTTP : 5000
+EC2 Auto Scaling Group (Flask + React)
+  ↓ Port 3306
+RDS MySQL (Multi-AZ)
+  ↓
+Secrets Manager (DB Credentials)
+\`\`\`
 
-### **Step 2: Database & Security**
-Deploy RDS in Multi-AZ. Store credentials in Secrets Manager. Create Security Groups with chained references.
-
-### **Step 3: Application Launch**
-Create a Launch Template with the User Data script (found in \`scripts/user-data.sh\`) to bootstrap the application.
-
-### **Step 4: Global Delivery**
-Deploy CloudFront distribution pointing to the ALB. Create Route 53 Alias records for the custom domain.
-
----
-
-## 🧪 Troubleshooting Scenarios Encountered
-During deployment, several critical issues were diagnosed and resolved:
-
-1.  **503 Service Unavailable:** Caused by the ALB Default Action being set to "Fixed Response" instead of "Forward". Resolved by updating the Listener Rule.
-2.  **Instance Connection Refused:** Caused by the Private Subnet missing a route to the NAT Gateway, preventing \`pip install\` from running. Resolved by fixing the Route Table association.
-3.  **Application Crash (Error 110):** The EC2 instance could not connect to RDS. Diagnosed as a missing Security Group rule allowing egress traffic on Port 3306.
+**Architecture Diagram:**
+![HLD Architecture](diagrams/HLD-Architecture.png)
 
 ---
 
-## 🏆 Acknowledgements
-This project is based on the "AWS Cloud Architect" curriculum by **Rajesh Daswani** (IaaS Academy).
+## 🔧 Infrastructure Details
+
+### 1️⃣ Networking — VPC Design
+- **Region:** ap-northeast-1 (Tokyo)
+- **CIDR:** 10.16.0.0/16
+- **Subnets:**
+  - 2 × Public (ALB, NAT Gateway)
+  - 2 × Private App (EC2 Instances)
+  - 2 × Private Data (RDS Database)
+- **Routing:**
+  - Public → Internet Gateway
+  - App → NAT Gateway (Secure outbound access)
+  - Data → No egress internet
+
+**Network Flow Diagram:**
+![LLD Network Flow](diagrams/LLD-Network-Flow.png)
+
+---
+
+### 2️⃣ Compute Layer — EC2 & Auto Scaling
+- **Instances:** \`t3.micro\` (or \`t3.medium\` for faster boot)
+- **Launch Template:** Bootstrapped via \`user-data.sh\`
+- **Auto Scaling:**
+  - Min: 2
+  - Max: 3
+- **Health Checks:** ELB + EC2 checks enabled
+- **AMI:** Amazon Linux 2023
+- **App:** Flask backend serving React static build
+
+**Bootstrap Script:** [View Script](scripts/user-data.sh)
+
+---
+
+### 3️⃣ Security & Identity
+
+**IAM Role for EC2:**
+- \`AmazonSSMManagedInstanceCore\` (Session Manager access)
+- \`AmazonS3FullAccess\` (Artifact download)
+- Inline policy → Secrets Manager (Least Privilege)
+
+**Security Group Chaining:**
+- \`ALB-SG\`: Allows inbound HTTP (80) / HTTPS (443) from World.
+- \`App-SG\`: Allows Port \`5000\` **only** from \`ALB-SG\`.
+- \`DB-SG\`: Allows Port \`3306\` **only** from \`App-SG\`.
+
+*Result: No public access to EC2 or RDS is possible.*
+
+---
+
+### 4️⃣ Database Layer — RDS MySQL
+
+- **Engine:** MySQL 8.0
+- **Deployment:** Multi-AZ (Synchronous Standby)
+- **Security:** Storage encryption enabled
+- **Credentials:** Stored in Secrets Manager path \`/virtualroast/db/admin\`
+- **Connection:** App fetches credentials using Boto3 at runtime.
+
+---
+
+## 🌀 Global Caching — CloudFront & Custom Domain
+
+- **Origin:** Application Load Balancer
+- **Viewer Protocol:** Redirect HTTP → HTTPS
+- **Caching:** configured to bypass dynamic content but secure the connection.
+- **SSL:** ACM certificate (us-east-1)
+- **Custom Domain:** \`www.rajdevops.click\` via Route 53 Alias → CloudFront
+
+**Proof of Global SSL:**
+![CloudFront Proof](screenshots/cloudfront-proof.png)
+![Website Live](screenshots/website-live.png)
+
+---
+
+## 🛠 Deployment Highlights
+
+The app is fully automated from EC2 User Data:
+
+1. System updates & dependency installation (Python, Pip, Git).
+2. AWS CLI installation.
+3. Sync application code from secure S3 bucket.
+4. Install Python requirements.
+5. Retrieve DB credentials from Secrets Manager.
+6. Start Flask app on port 5000.
+
+---
+
+## 🧪 Real-World Troubleshooting
+
+During deployment, the following critical issues were diagnosed and resolved:
+
+1. **503 Service Unavailable**
+   - **Root Cause:** ALB Default Action was set to "Return Fixed Response" instead of forwarding to Target Group.
+   - **Fix:** Updated Listener Rule to "Forward to Target Group".
+
+2. **Package Install Failing (Boot Hang)**
+   - **Root Cause:** Private subnet Route Table was missing the route to the NAT Gateway, causing \`pip install\` to time out.
+   - **Fix:** Corrected Private Route Table association to point \`0.0.0.0/0\` → NAT Gateway.
+
+3. **Database Connection Timeout (Error 110)**
+   - **Root Cause:** Database Security Group did not allow inbound traffic from the App Security Group.
+   - **Fix:** Implemented Security Group Chaining (Source: \`sg-app\`).
+
+*This hands-on debugging replicates real production incidents.*
+
+---
+
+## 📁 Repository Structure
+
+\`\`\`text
+aws-ritual-roast-capstone/
+├── README.md
+├── diagrams/
+│   ├── HLD-Architecture.png
+│   └── LLD-Network-Flow.png
+├── screenshots/
+│   ├── autoscaling-proof.png
+│   ├── cloudfront-proof.png
+│   ├── target-health.png
+│   └── website-live.png
+├── scripts/
+│   └── user-data.sh
+└── src/
+    ├── requirements.txt
+    └── ritual-roast.py
+\`\`\`
+
+---
+
+## 🚀 Future Improvements
+
+- Use **Gunicorn** instead of Flask dev server for better concurrency.
+- Add **AWS WAF** in front of CloudFront to block SQL injection.
+- Containerize the app using **Docker + ECS**.
+- Infrastructure as Code (Terraform / CDK).
+- CI/CD pipeline using **GitHub Actions**.
+
+---
+
+## 🏆 Credits
+
+This project is inspired by the **AWS Cloud Architect** program by **Rajesh Daswani**, extended into a real-world deployment with Custom Domains and CDN.
